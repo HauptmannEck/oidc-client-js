@@ -397,6 +397,31 @@ describe("ResponseValidator", function () {
 
         });
 
+        it("should fail if request was code flow but no code in response", function (done) {
+
+            stubResponse.id_token = id_token;
+            stubState.code_verifier = "secret";
+            delete stubResponse.code;
+
+            subject._processSigninParams(stubState, stubResponse).then(null, err => {
+                err.message.should.contain("code");
+                done();
+            });
+
+        });
+        
+        it("should fail if request was not code flow no code in response", function (done) {
+
+            stubResponse.id_token = id_token;
+            stubResponse.code = "code";
+
+            subject._processSigninParams(stubState, stubResponse).then(null, err => {
+                err.message.should.contain("code");
+                done();
+            });
+
+        });
+
         it("should return data for successful responses", function (done) {
 
             stubResponse.id_token = id_token;
@@ -416,7 +441,7 @@ describe("ResponseValidator", function () {
             stubResponse.isOpenIdConnect = true;
             stubResponse.profile = { a: 'apple', b: 'banana' };
 
-            subject._processClaims(stubResponse).then(response => {
+            subject._processClaims({}, stubResponse).then(response => {
                 subject._filterProtocolClaimsWasCalled.should.be.true;
                 done();
             });
@@ -427,7 +452,7 @@ describe("ResponseValidator", function () {
 
             stubResponse.isOpenIdConnect = false;
 
-            subject._processClaims(stubResponse).then(response => {
+            subject._processClaims({}, stubResponse).then(response => {
                 assert.isUndefined(subject._filterProtocolClaimsWasCalled);
                 done();
             });
@@ -443,7 +468,7 @@ describe("ResponseValidator", function () {
             stubResponse.access_token = "access_token";
             stubUserInfoService.getClaimsResult = Promise.resolve({ c: 'carrot' });
 
-            subject._processClaims(stubResponse).then(response => {
+            subject._processClaims({}, stubResponse).then(response => {
                 stubUserInfoService.getClaimsWasCalled.should.be.true;
                 subject._mergeClaimsWasCalled.should.be.true;
                 done();
@@ -460,7 +485,7 @@ describe("ResponseValidator", function () {
             stubResponse.access_token = "access_token";
             stubUserInfoService.getClaimsResult = Promise.resolve({ c: 'carrot' });
 
-            subject._processClaims(stubResponse).then(response => {
+            subject._processClaims({}, stubResponse).then(response => {
                 stubUserInfoService.getClaimsWasCalled.should.be.false;
                 done();
             });
@@ -476,7 +501,7 @@ describe("ResponseValidator", function () {
             stubResponse.access_token = "access_token";
             stubUserInfoService.getClaimsResult = Promise.resolve({ c: 'carrot' });
 
-            subject._processClaims(stubResponse).then(response => {
+            subject._processClaims({}, stubResponse).then(response => {
                 stubUserInfoService.getClaimsWasCalled.should.be.false;
                 done();
             });
@@ -491,7 +516,7 @@ describe("ResponseValidator", function () {
             stubResponse.profile = { a: 'apple', b: 'banana' };
             stubUserInfoService.getClaimsResult = Promise.resolve({ c: 'carrot' });
 
-            subject._processClaims(stubResponse).then(response => {
+            subject._processClaims({}, stubResponse).then(response => {
                 stubUserInfoService.getClaimsWasCalled.should.be.false;
                 done();
             });
@@ -511,6 +536,14 @@ describe("ResponseValidator", function () {
             var result = subject._mergeClaims(c1, c2);
             result.should.deep.equal({ a: 'apple', c: 'carrot', b: 'banana' });
 
+        });
+
+        it("should merge claims when claim types are objects", function () {
+
+            var c1 = { custom: {'apple': 'foo', 'pear': 'bar'} };
+            var c2 = { custom: {'apple': 'foo', 'orange': 'peel'}, b: 'banana' };
+            var result = subject._mergeClaims(c1, c2);
+            result.should.deep.equal({ custom: {'apple': 'foo', 'pear': 'bar', 'orange': 'peel'}, b: 'banana' });
         });
 
         it("should merge same claim types into array", function () {

@@ -1,13 +1,14 @@
 // Copyright (c) Brock Allen & Dominick Baier. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See LICENSE in the project root for license information.
 
-import { Log } from './Log';
-import { OidcClientSettings } from './OidcClientSettings';
-import { RedirectNavigator } from './RedirectNavigator';
-import { PopupNavigator } from './PopupNavigator';
-import { IFrameNavigator } from './IFrameNavigator';
-import { WebStorageStateStore } from './WebStorageStateStore';
-import { Global } from './Global';
+import { Log } from './Log.js';
+import { OidcClientSettings } from './OidcClientSettings.js';
+import { RedirectNavigator } from './RedirectNavigator.js';
+import { PopupNavigator } from './PopupNavigator.js';
+import { IFrameNavigator } from './IFrameNavigator.js';
+import { WebStorageStateStore } from './WebStorageStateStore.js';
+import { Global } from './Global.js';
+import { SigninRequest } from './SigninRequest.js';
 
 const DefaultAccessTokenExpiringNotificationTime = 60;
 const DefaultCheckSessionInterval = 2000;
@@ -21,10 +22,13 @@ export class UserManagerSettings extends OidcClientSettings {
         silent_redirect_uri,
         silentRequestTimeout,
         automaticSilentRenew = false,
+        validateSubOnSilentRenew = false,
         includeIdTokenInSilentRenew = true,
         monitorSession = true,
+        monitorAnonymousSession = false,
         checkSessionInterval = DefaultCheckSessionInterval,
         stopCheckSessionOnError = true,
+        query_status_response_type,
         revokeAccessTokenOnSignout = false,
         accessTokenExpiringNotificationTime = DefaultAccessTokenExpiringNotificationTime,
         redirectNavigator = new RedirectNavigator(),
@@ -41,13 +45,24 @@ export class UserManagerSettings extends OidcClientSettings {
 
         this._silent_redirect_uri = silent_redirect_uri;
         this._silentRequestTimeout = silentRequestTimeout;
-        this._automaticSilentRenew = !!automaticSilentRenew;
+        this._automaticSilentRenew = automaticSilentRenew;
+        this._validateSubOnSilentRenew = validateSubOnSilentRenew;
         this._includeIdTokenInSilentRenew = includeIdTokenInSilentRenew;
         this._accessTokenExpiringNotificationTime = accessTokenExpiringNotificationTime;
 
         this._monitorSession = monitorSession;
+        this._monitorAnonymousSession = monitorAnonymousSession;
         this._checkSessionInterval = checkSessionInterval;
         this._stopCheckSessionOnError = stopCheckSessionOnError;
+        if (query_status_response_type) {
+            this._query_status_response_type = query_status_response_type;
+        } 
+        else if (arguments[0] && arguments[0].response_type) {
+            this._query_status_response_type = SigninRequest.isOidc(arguments[0].response_type) ? "id_token" : "code";
+        }
+        else {
+            this._query_status_response_type = "id_token";
+        }
         this._revokeAccessTokenOnSignout = revokeAccessTokenOnSignout;
 
         this._redirectNavigator = redirectNavigator;
@@ -77,7 +92,10 @@ export class UserManagerSettings extends OidcClientSettings {
         return this._silentRequestTimeout;
     }
     get automaticSilentRenew() {
-        return !!(this.silent_redirect_uri && this._automaticSilentRenew);
+        return this._automaticSilentRenew;
+    }
+    get validateSubOnSilentRenew() {
+        return this._validateSubOnSilentRenew;
     }
     get includeIdTokenInSilentRenew() {
         return this._includeIdTokenInSilentRenew;
@@ -89,11 +107,17 @@ export class UserManagerSettings extends OidcClientSettings {
     get monitorSession() {
         return this._monitorSession;
     }
+    get monitorAnonymousSession() {
+        return this._monitorAnonymousSession;
+    }
     get checkSessionInterval() {
         return this._checkSessionInterval;
     }
     get stopCheckSessionOnError(){
         return this._stopCheckSessionOnError;
+    }
+    get query_status_response_type(){
+        return this._query_status_response_type;
     }
     get revokeAccessTokenOnSignout() {
         return this._revokeAccessTokenOnSignout;

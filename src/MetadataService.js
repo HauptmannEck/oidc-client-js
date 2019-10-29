@@ -1,8 +1,8 @@
 // Copyright (c) Brock Allen & Dominick Baier. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See LICENSE in the project root for license information.
 
-import { Log } from './Log';
-import { JsonService } from './JsonService';
+import { Log } from './Log.js';
+import { JsonService } from './JsonService.js';
 
 const OidcMetadataUrlPath = '.well-known/openid-configuration';
 
@@ -70,8 +70,8 @@ export class MetadataService {
         return this._getMetadataProperty("userinfo_endpoint");
     }
 
-    getTokenEndpoint() {
-        return this._getMetadataProperty("token_endpoint", true);
+    getTokenEndpoint(optional=true) {
+        return this._getMetadataProperty("token_endpoint", optional);
     }
 
     getCheckSessionIframe() {
@@ -84,6 +84,10 @@ export class MetadataService {
 
     getRevocationEndpoint() {
         return this._getMetadataProperty("revocation_endpoint", true);
+    }
+
+    getKeysEndpoint() {
+        return this._getMetadataProperty("jwks_uri", true);
     }
 
     _getMetadataProperty(name, optional=false) {

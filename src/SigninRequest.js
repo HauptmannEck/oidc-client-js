@@ -1,17 +1,17 @@
 // Copyright (c) Brock Allen & Dominick Baier. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See LICENSE in the project root for license information.
 
-import { Log } from './Log';
-import { UrlUtility } from './UrlUtility';
-import { SigninState } from './SigninState';
+import { Log } from './Log.js';
+import { UrlUtility } from './UrlUtility.js';
+import { SigninState } from './SigninState.js';
 
 export class SigninRequest {
     constructor({
         // mandatory
         url, client_id, redirect_uri, response_type, scope, authority,
         // optional
-        data, prompt, display, max_age, ui_locales, id_token_hint, login_hint, acr_values, resource,
-        request, request_uri, extraQueryParams,
+        data, prompt, display, max_age, ui_locales, id_token_hint, login_hint, acr_values, resource, response_mode,
+        request, request_uri, extraQueryParams, request_type, client_secret, extraTokenParams, skipUserInfo
     }) {
         if (!url) {
             Log.error("SigninRequest.ctor: No url passed");
@@ -39,7 +39,17 @@ export class SigninRequest {
         }
 
         let oidc = SigninRequest.isOidc(response_type);
-        this.state = new SigninState({ nonce: oidc, data, client_id, authority });
+        let code = SigninRequest.isCode(response_type);
+
+        if (!response_mode) {
+            response_mode = SigninRequest.isCode(response_type) ? "query" : null;
+        }
+
+        this.state = new SigninState({ nonce: oidc, 
+            data, client_id, authority, redirect_uri, 
+            code_verifier: code, 
+            request_type, response_mode,
+            client_secret, scope, extraTokenParams, skipUserInfo });
 
         url = UrlUtility.addQueryParam(url, "client_id", client_id);
         url = UrlUtility.addQueryParam(url, "redirect_uri", redirect_uri);
@@ -50,8 +60,12 @@ export class SigninRequest {
         if (oidc) {
             url = UrlUtility.addQueryParam(url, "nonce", this.state.nonce);
         }
+        if (code) {
+            url = UrlUtility.addQueryParam(url, "code_challenge", this.state.code_challenge);
+            url = UrlUtility.addQueryParam(url, "code_challenge_method", "S256");
+        }
 
-        var optional = { prompt, display, max_age, ui_locales, id_token_hint, login_hint, acr_values, resource, request, request_uri };
+        var optional = { prompt, display, max_age, ui_locales, id_token_hint, login_hint, acr_values, resource, request, request_uri, response_mode };
         for(let key in optional){
             if (optional[key]) {
                 url = UrlUtility.addQueryParam(url, key, optional[key]);
@@ -75,6 +89,13 @@ export class SigninRequest {
     static isOAuth(response_type) {
         var result = response_type.split(/\s+/g).filter(function(item) {
             return item === "token";
+        });
+        return !!(result[0]);
+    }
+    
+    static isCode(response_type) {
+        var result = response_type.split(/\s+/g).filter(function(item) {
+            return item === "code";
         });
         return !!(result[0]);
     }

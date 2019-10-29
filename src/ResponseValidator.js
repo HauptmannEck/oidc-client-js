@@ -1,17 +1,22 @@
 // Copyright (c) Brock Allen & Dominick Baier. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See LICENSE in the project root for license information.
 
-import { Log } from './Log';
-import { MetadataService } from './MetadataService';
-import { UserInfoService } from './UserInfoService';
-import { ErrorResponse } from './ErrorResponse';
-import { JoseUtil } from './JoseUtil';
+import { Log } from './Log.js';
+import { MetadataService } from './MetadataService.js';
+import { UserInfoService } from './UserInfoService.js';
+import { TokenClient } from './TokenClient.js';
+import { ErrorResponse } from './ErrorResponse.js';
+import { JoseUtil } from './JoseUtil.js';
 
 const ProtocolClaims = ["nonce", "at_hash", "iat", "nbf", "exp", "aud", "iss", "c_hash"];
 
 export class ResponseValidator {
 
-    constructor(settings, MetadataServiceCtor = MetadataService, UserInfoServiceCtor = UserInfoService, joseUtil = JoseUtil) {
+    constructor(settings, 
+        MetadataServiceCtor = MetadataService,
+        UserInfoServiceCtor = UserInfoService, 
+        joseUtil = JoseUtil,
+        TokenClientCtor = TokenClient) {
         if (!settings) {
             Log.error("ResponseValidator.ctor: No settings passed to ResponseValidator");
             throw new Error("settings");
@@ -21,6 +26,7 @@ export class ResponseValidator {
         this._metadataService = new MetadataServiceCtor(this._settings);
         this._userInfoService = new UserInfoServiceCtor(this._settings);
         this._joseUtil = joseUtil;
+        this._tokenClient = new TokenClientCtor(this._settings);
     }
 
     validateSigninResponse(state, response) {
@@ -30,7 +36,7 @@ export class ResponseValidator {
             Log.debug("ResponseValidator.validateSigninResponse: state processed");
             return this._validateTokens(state, response).then(response => {
                 Log.debug("ResponseValidator.validateSigninResponse: tokens validated");
-                return this._processClaims(response).then(response => {
+                return this._processClaims(state, response).then(response => {
                     Log.debug("ResponseValidator.validateSigninResponse: claims processed");
                     return response;
                 });
@@ -114,16 +120,31 @@ export class ResponseValidator {
             return Promise.reject(new Error("Unexpected id_token in response"));
         }
 
+        if (state.code_verifier && !response.code) {
+            Log.error("ResponseValidator._processSigninParams: Expecting code in response");
+            return Promise.reject(new Error("No code in response"));
+        }
+
+        if (!state.code_verifier && response.code) {
+            Log.error("ResponseValidator._processSigninParams: Not expecting code in response");
+            return Promise.reject(new Error("Unexpected code in response"));
+        }
+
+        if (!response.scope) {
+            // if there's no scope on the response, then assume all scopes granted (per-spec) and copy over scopes from original request
+            response.scope = state.scope;
+        }
+
         return Promise.resolve(response);
     }
 
-    _processClaims(response) {
+    _processClaims(state, response) {
         if (response.isOpenIdConnect) {
             Log.debug("ResponseValidator._processClaims: response is OIDC, processing claims");
 
             response.profile = this._filterProtocolClaims(response.profile);
 
-            if (this._settings.loadUserInfo && response.access_token) {
+            if (state.skipUserInfo !== true && this._settings.loadUserInfo && response.access_token) {
                 Log.debug("ResponseValidator._processClaims: loading user info");
 
                 return this._userInfoService.getClaims(response.access_token).then(claims => {
@@ -171,7 +192,12 @@ export class ResponseValidator {
                     }
                 }
                 else if (result[name] !== value) {
-                    result[name] = [result[name], value];
+                    if (typeof value === 'object') {
+                        result[name] = this._mergeClaims(result[name], value);
+                    } 
+                    else {
+                        result[name] = [result[name], value];
+                    }
                 }
             }
         }
@@ -199,6 +225,11 @@ export class ResponseValidator {
     }
 
     _validateTokens(state, response) {
+        if (response.code) {
+            Log.debug("ResponseValidator._validateTokens: Validating code");
+            return this._processCode(state, response);
+        }
+
         if (response.id_token) {
             if (response.access_token) {
                 Log.debug("ResponseValidator._validateTokens: Validating id_token and access_token");
@@ -209,8 +240,64 @@ export class ResponseValidator {
             return this._validateIdToken(state, response);
         }
 
-        Log.debug("ResponseValidator._validateTokens: No id_token to validate");
+        Log.debug("ResponseValidator._validateTokens: No code to process or id_token to validate");
         return Promise.resolve(response);
+    }
+
+    _processCode(state, response) {
+        var request = {
+            client_id: state.client_id,
+            client_secret: state.client_secret,
+            code : response.code,
+            redirect_uri: state.redirect_uri,
+            code_verifier: state.code_verifier
+        };
+
+        if (state.extraTokenParams && typeof(state.extraTokenParams) === 'object') {
+            Object.assign(request, state.extraTokenParams);
+        }
+        
+        return this._tokenClient.exchangeCode(request).then(tokenResponse => {
+            
+            for(var key in tokenResponse) {
+                response[key] = tokenResponse[key];
+            }
+
+            if (response.id_token) {
+                Log.debug("ResponseValidator._processCode: token response successful, processing id_token");
+                return this._validateIdTokenAttributes(state, response);
+            }
+            else {
+                Log.debug("ResponseValidator._processCode: token response successful, returning response");
+            }
+            
+            return response;
+        });
+    }
+
+    _validateIdTokenAttributes(state, response) {
+        return this._metadataService.getIssuer().then(issuer => {
+
+            let audience = state.client_id;
+            let clockSkewInSeconds = this._settings.clockSkew;
+            Log.debug("ResponseValidator._validateIdTokenAttributes: Validaing JWT attributes; using clock skew (in seconds) of: ", clockSkewInSeconds);
+
+            return this._joseUtil.validateJwtAttributes(response.id_token, issuer, audience, clockSkewInSeconds).then(payload => {
+            
+                if (state.nonce && state.nonce !== payload.nonce) {
+                    Log.error("ResponseValidator._validateIdTokenAttributes: Invalid nonce in id_token");
+                    return Promise.reject(new Error("Invalid nonce in id_token"));
+                }
+
+                if (!payload.sub) {
+                    Log.error("ResponseValidator._validateIdTokenAttributes: No sub present in id_token");
+                    return Promise.reject(new Error("No sub present in id_token"));
+                }
+
+                response.profile = payload;
+                return response;
+            });
+        });
     }
 
     _validateIdTokenAndAccessToken(state, response) {

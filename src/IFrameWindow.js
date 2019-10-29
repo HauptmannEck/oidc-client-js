@@ -1,7 +1,7 @@
 // Copyright (c) Brock Allen & Dominick Baier. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See LICENSE in the project root for license information.
 
-import { Log } from './Log';
+import { Log } from './Log.js';
 
 const DefaultTimeout = 10000;
 
@@ -105,8 +105,7 @@ export class IFrameWindow {
 
     static notifyParent(url) {
         Log.debug("IFrameWindow.notifyParent");
-
-        if (window.parent && window !== window.parent) {
+        if (window.frameElement) {
             url = url || window.location.href;
             if (url) {
                 Log.debug("IFrameWindow.notifyParent: posting url message to parent");

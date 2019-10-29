@@ -1,10 +1,10 @@
 // Copyright (c) Brock Allen & Dominick Baier. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See LICENSE in the project root for license information.
 
-import { Log } from './Log';
-import { WebStorageStateStore } from './WebStorageStateStore';
-import { ResponseValidator } from './ResponseValidator';
-import { MetadataService } from './MetadataService';
+import { Log } from './Log.js';
+import { WebStorageStateStore } from './WebStorageStateStore.js';
+import { ResponseValidator } from './ResponseValidator.js';
+import { MetadataService } from './MetadataService.js';
 
 const OidcMetadataUrlPath = '.well-known/openid-configuration';
 
@@ -21,10 +21,11 @@ export class OidcClientSettings {
         client_id, client_secret, response_type = DefaultResponseType, scope = DefaultScope,
         redirect_uri, post_logout_redirect_uri,
         // optional protocol
-        prompt, display, max_age, ui_locales, acr_values, resource,
+        prompt, display, max_age, ui_locales, acr_values, resource, response_mode,
         // behavior flags
         filterProtocolClaims = true, loadUserInfo = true,
         staleStateAge = DefaultStaleStateAge, clockSkew = DefaultClockSkewInSeconds,
+        userInfoJwtIssuer = 'OP',
         // other behavior
         stateStore = new WebStorageStateStore(),
         ResponseValidatorCtor = ResponseValidator,
@@ -51,11 +52,13 @@ export class OidcClientSettings {
         this._ui_locales = ui_locales;
         this._acr_values = acr_values;
         this._resource = resource;
+        this._response_mode = response_mode;
 
         this._filterProtocolClaims = !!filterProtocolClaims;
         this._loadUserInfo = !!loadUserInfo;
         this._staleStateAge = staleStateAge;
         this._clockSkew = clockSkew;
+        this._userInfoJwtIssuer = userInfoJwtIssuer;
 
         this._stateStore = stateStore;
         this._validator = new ResponseValidatorCtor(this);
@@ -113,6 +116,9 @@ export class OidcClientSettings {
     }
     get resource() {
         return this._resource;
+    }
+    get response_mode() {
+        return this._response_mode;
     }
 
 
@@ -172,6 +178,9 @@ export class OidcClientSettings {
     }
     get clockSkew() {
         return this._clockSkew;
+    }
+    get userInfoJwtIssuer() {
+        return this._userInfoJwtIssuer;
     }
 
     get stateStore() {
